@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Person
@@ -288,12 +289,41 @@ fun GroupCardDetail(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                IconButton(onClick = onSetDefault) {
-                    Icon(
-                        imageVector = if (isDefault) Icons.Filled.Star else Icons.Outlined.StarOutline,
-                        contentDescription = "Default",
-                        tint = if (isDefault) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val context = LocalContext.current
+                    IconButton(
+                        onClick = {
+                            val intent = android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse("https://tricount.com/${tricount.publicToken}")
+                            ).apply {
+                                setPackage("com.tribab.tricount.android")
+                            }
+                            try {
+                                context.startActivity(intent)
+                            } catch (_: Exception) {
+                                context.startActivity(
+                                    android.content.Intent(
+                                        android.content.Intent.ACTION_VIEW,
+                                        android.net.Uri.parse("https://tricount.com/${tricount.publicToken}")
+                                    )
+                                )
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = "Open in Tricount App",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    IconButton(onClick = onSetDefault) {
+                        Icon(
+                            imageVector = if (isDefault) Icons.Filled.Star else Icons.Outlined.StarOutline,
+                            contentDescription = "Default",
+                            tint = if (isDefault) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
 

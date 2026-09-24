@@ -36,6 +36,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -218,8 +219,38 @@ fun SplitScreen(
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Spacer(modifier = Modifier.height(24.dp))
-                        Button(onClick = onNavigateBack) {
-                            Text("Done")
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val currentTricount = tricounts.find { it.id == selectedTricountId }
+                            OutlinedButton(
+                                onClick = {
+                                    val token = currentTricount?.publicToken
+                                    if (!token.isNullOrBlank()) {
+                                        val intent = android.content.Intent(
+                                            android.content.Intent.ACTION_VIEW,
+                                            android.net.Uri.parse("https://tricount.com/$token")
+                                        ).apply {
+                                            setPackage("com.tribab.tricount.android")
+                                        }
+                                        try {
+                                            context.startActivity(intent)
+                                        } catch (_: Exception) {
+                                            context.startActivity(
+                                                android.content.Intent(
+                                                    android.content.Intent.ACTION_VIEW,
+                                                    android.net.Uri.parse("https://tricount.com/$token")
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+                            ) {
+                                Text("Open in Tricount")
+                            }
+                            Button(onClick = onNavigateBack) {
+                                Text("Done")
+                            }
                         }
                     }
                 }
