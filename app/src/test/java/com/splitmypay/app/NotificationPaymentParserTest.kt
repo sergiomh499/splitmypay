@@ -112,4 +112,28 @@ class NotificationPaymentParserTest {
         )
         assertNull(parsed)
     }
+
+    @Test
+    fun testBulletFormatWithGenericTitleIgnored() {
+        val parsed = NotificationPaymentParser.parse(
+            title = "Mercadona",
+            text = "Google Pay • 18,45 €"
+        )
+        assertNotNull(parsed)
+        assertEquals("Mercadona", parsed!!.merchant)
+        assertEquals(18.45, parsed.amount, 0.001)
+        assertEquals("EUR", parsed.currency)
+    }
+
+    @Test
+    fun testStoreNameStartingWithAtNotStripped() {
+        val parsed = NotificationPaymentParser.parse(
+            title = "Google Wallet",
+            text = "At Home • 35.00 €"
+        )
+        assertNotNull(parsed)
+        assertEquals("At Home", parsed!!.merchant)
+        assertEquals(35.00, parsed.amount, 0.001)
+        assertEquals("EUR", parsed.currency)
+    }
 }

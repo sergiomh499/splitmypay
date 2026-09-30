@@ -62,9 +62,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun extractTokenFromUrl(raw: String): String {
         val trimmed = raw.trim()
-        val regex = Regex("""(?:tricount\.com/|/)?([a-zA-Z0-9_-]{10,30})/?$""")
-        val match = regex.find(trimmed)
-        return match?.groups?.get(1)?.value ?: trimmed
+        val cleanUrl = trimmed.substringBefore('?').substringBefore('#').trimEnd('/')
+        val regex = Regex("""(?:tricount\.com/|/)?([a-zA-Z0-9_-]{10,30})$""")
+        val match = regex.find(cleanUrl)
+        return match?.groups?.get(1)?.value ?: cleanUrl.substringAfterLast('/')
     }
 
     suspend fun importTricount(urlOrToken: String): Result<TricountEntity> = withContext(Dispatchers.IO) {
@@ -89,13 +90,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         db.tricountDao().insertTricount(tricountEntity)
 
+        val existingCurrentUser = db.memberDao().getCurrentUserForTricountSync(detail.id)
+        val defaultPayerUuid = db.settingDao().getSettingSync(SettingEntity.KEY_DEFAULT_PAYER_UUID)
+
         val members = detail.allMembership.map { wrapper ->
             val m = wrapper.registryMembership
+            val isMe = (existingCurrentUser != null && existingCurrentUser.uuid == m.uuid) || (defaultPayerUuid != null && defaultPayerUuid == m.uuid)
             MemberEntity(
                 uuid = m.uuid,
                 tricountId = detail.id,
                 displayName = m.effectiveDisplayName,
-                isCurrentUser = false
+                isCurrentUser = isMe
             )
         }
         db.memberDao().insertMembers(members)

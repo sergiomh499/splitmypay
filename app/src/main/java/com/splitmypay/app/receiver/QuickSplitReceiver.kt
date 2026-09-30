@@ -58,13 +58,8 @@ class QuickSplitReceiver : BroadcastReceiver() {
                         }
 
                         // Determine target Tricount: default or first available
-                        val defaultTricount = db.tricountDao().getDefaultTricountSync()
-                            ?: db.tricountDao().getAllTricounts().let {
-                                // Fallback to first if no default set
-                                null
-                            }
-
-                        val targetTricount = defaultTricount ?: run {
+                        val targetTricount = db.tricountDao().getDefaultTricountSync()
+                            ?: db.tricountDao().getAllTricountsSync().firstOrNull() ?: run {
                             // Notify user to link group
                             showErrorNotification(
                                 context,

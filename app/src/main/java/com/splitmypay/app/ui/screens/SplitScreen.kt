@@ -154,6 +154,21 @@ fun SplitScreen(
         }
     }
 
+    // Pre-fill custom amounts when switching to Custom mode
+    LaunchedEffect(splitMode, amountText, members) {
+        if (splitMode == SplitMode.CUSTOM && members.isNotEmpty()) {
+            val total = amountText.toDoubleOrNull() ?: 0.0
+            val activeUuids = members.map { it.uuid }
+            val equalAllocs = SplitCalculator.calculateEqualSplit(total, activeUuids).associateBy { it.memberUuid }
+            members.forEach { m ->
+                if (customAmounts[m.uuid].isNullOrBlank()) {
+                    val share = equalAllocs[m.uuid]?.amount ?: 0.0
+                    customAmounts[m.uuid] = String.format(Locale.US, "%.2f", share)
+                }
+            }
+        }
+    }
+
     val totalAmount = amountText.toDoubleOrNull() ?: 0.0
     val activeUuids = remember(members, equalSelectedMembers.toMap()) {
         members.filter { equalSelectedMembers[it.uuid] == true }.map { it.uuid }

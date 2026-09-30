@@ -112,12 +112,12 @@ object NotificationPaymentParser {
 
             if (amt1 != null && amt2 == null) {
                 val merchant = cleanMerchant(part2)
-                if (merchant.isNotEmpty()) {
+                if (merchant.isNotEmpty() && !isGenericTitle(merchant)) {
                     return ParsedPayment(merchant = merchant, amount = amt1.first, currency = amt1.second)
                 }
             } else if (amt2 != null && amt1 == null) {
                 val merchant = cleanMerchant(part1)
-                if (merchant.isNotEmpty()) {
+                if (merchant.isNotEmpty() && !isGenericTitle(merchant)) {
                     return ParsedPayment(merchant = merchant, amount = amt2.first, currency = amt2.second)
                 }
             }
@@ -215,8 +215,8 @@ object NotificationPaymentParser {
 
         // Strip prefixes
         val prefixes = listOf(
-            "paid to", "paid at", "pago en", "pago de", "compra en", "compra de",
-            "spent at", "en", "at", "to", "a", "payment to"
+            "paid to", "paid at", "pago en", "pago de", "pago con", "compra en", "compra de",
+            "spent at", "payment to", "payment at", "purchase at", "purchase of"
         )
         for (prefix in prefixes) {
             if (result.lowercase().startsWith("$prefix ")) {

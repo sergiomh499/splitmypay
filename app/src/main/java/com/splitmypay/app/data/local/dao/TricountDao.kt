@@ -15,6 +15,9 @@ interface TricountDao {
     @Query("SELECT * FROM tricounts ORDER BY isDefault DESC, title ASC")
     fun getAllTricounts(): Flow<List<TricountEntity>>
 
+    @Query("SELECT * FROM tricounts ORDER BY isDefault DESC, title ASC")
+    suspend fun getAllTricountsSync(): List<TricountEntity>
+
     @Query("SELECT * FROM tricounts WHERE id = :id")
     fun getTricountById(id: Long): Flow<TricountEntity?>
 

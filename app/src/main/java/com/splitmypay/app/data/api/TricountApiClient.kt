@@ -142,64 +142,88 @@ class TricountApiClient(
         }
     }
 
+    fun clearCachedSession() {
+        cachedSessionToken = null
+        cachedUserId = null
+        prefs?.edit()?.remove("session_token")?.remove("user_id")?.apply()
+    }
+
+    private suspend fun <T> executeWithSessionRetry(
+        block: suspend (token: String, userId: Long) -> T
+    ): T {
+        val (token1, userId1) = ensureSession()
+        return try {
+            block(token1, userId1)
+        } catch (e: Exception) {
+            if (e.message?.contains("401") == true || e.message?.contains("403") == true) {
+                clearCachedSession()
+                val (token2, userId2) = ensureSession()
+                block(token2, userId2)
+            } else {
+                throw e
+            }
+        }
+    }
+
     suspend fun syncRegistry(publicToken: String): Result<RegistryDetail> = withContext(Dispatchers.IO) {
         runCatching {
-            val (token, userId) = ensureSession()
-            val syncRequest = RegistrySyncRequest(
-                allRegistryActive = listOf(ActiveRegistryToken(publicToken.trim()))
-            )
-            val requestBody = json.encodeToString(syncRequest).toRequestBody(jsonMediaType)
+            executeWithSessionRetry { token, userId ->
+                val syncRequest = RegistrySyncRequest(
+                    allRegistryActive = listOf(ActiveRegistryToken(publicToken.trim()))
+                )
+                val requestBody = json.encodeToString(syncRequest).toRequestBody(jsonMediaType)
 
-            val syncHttpReq = Request.Builder()
-                .url("$baseUrl/v1/user/$userId/registry-synchronization")
-                .header("User-Agent", USER_AGENT)
-                .header("app-id", cachedInstallationUuid.orEmpty())
-                .header("X-Bunq-Client-Authentication", token)
-                .header("X-Bunq-Client-Request-Id", UUID.randomUUID().toString())
-                .post(requestBody)
-                .build()
+                val syncHttpReq = Request.Builder()
+                    .url("$baseUrl/v1/user/$userId/registry-synchronization")
+                    .header("User-Agent", USER_AGENT)
+                    .header("app-id", cachedInstallationUuid.orEmpty())
+                    .header("X-Bunq-Client-Authentication", token)
+                    .header("X-Bunq-Client-Request-Id", UUID.randomUUID().toString())
+                    .post(requestBody)
+                    .build()
 
-            var registryId: Long? = null
-            var directRegistry: RegistryDetail? = null
+                var registryId: Long? = null
+                var directRegistry: RegistryDetail? = null
 
-            client.newCall(syncHttpReq).execute().use { response ->
-                val bodyStr = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
-                    throw IllegalStateException("Registry sync failed (${response.code}): $bodyStr")
-                }
-                val syncResp = json.decodeFromString<RegistrySyncResponse>(bodyStr)
-                val firstRegistry = syncResp.response.firstOrNull()?.registry
-                if (firstRegistry != null) {
-                    registryId = firstRegistry.id
-                    if (firstRegistry.allMembership.isNotEmpty()) {
-                        directRegistry = firstRegistry
+                client.newCall(syncHttpReq).execute().use { response ->
+                    val bodyStr = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        throw IllegalStateException("Registry sync failed (${response.code}): $bodyStr")
+                    }
+                    val syncResp = json.decodeFromString<RegistrySyncResponse>(bodyStr)
+                    val firstRegistry = syncResp.response.firstOrNull()?.registry
+                    if (firstRegistry != null) {
+                        registryId = firstRegistry.id
+                        if (firstRegistry.allMembership.isNotEmpty()) {
+                            directRegistry = firstRegistry
+                        }
                     }
                 }
-            }
 
-            if (directRegistry != null && directRegistry!!.allMembership.isNotEmpty()) {
-                return@runCatching directRegistry!!
-            }
-
-            val targetId = registryId ?: throw IllegalStateException("Registry token $publicToken not found")
-
-            // Fetch detailed registry with members
-            val detailReq = Request.Builder()
-                .url("$baseUrl/v1/user/$userId/registry/$targetId")
-                .header("User-Agent", USER_AGENT)
-                .header("app-id", cachedInstallationUuid.orEmpty())
-                .header("X-Bunq-Client-Authentication", token)
-                .header("X-Bunq-Client-Request-Id", UUID.randomUUID().toString())
-                .get()
-                .build()
-
-            client.newCall(detailReq).execute().use { response ->
-                val bodyStr = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
-                    throw IllegalStateException("Failed to fetch registry detail (${response.code}): $bodyStr")
+                if (directRegistry != null && directRegistry!!.allMembership.isNotEmpty()) {
+                    return@executeWithSessionRetry directRegistry!!
                 }
-                val detailResp = json.decodeFromString<RegistrySyncResponse>(bodyStr)
-                detailResp.response.firstOrNull()?.registry ?: throw IllegalStateException("Registry details missing in response: $bodyStr")
+
+                val targetId = registryId ?: throw IllegalStateException("Registry token $publicToken not found")
+
+                // Fetch detailed registry with members
+                val detailReq = Request.Builder()
+                    .url("$baseUrl/v1/user/$userId/registry/$targetId")
+                    .header("User-Agent", USER_AGENT)
+                    .header("app-id", cachedInstallationUuid.orEmpty())
+                    .header("X-Bunq-Client-Authentication", token)
+                    .header("X-Bunq-Client-Request-Id", UUID.randomUUID().toString())
+                    .get()
+                    .build()
+
+                client.newCall(detailReq).execute().use { response ->
+                    val bodyStr = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        throw IllegalStateException("Failed to fetch registry detail (${response.code}): $bodyStr")
+                    }
+                    val detailResp = json.decodeFromString<RegistrySyncResponse>(bodyStr)
+                    detailResp.response.firstOrNull()?.registry ?: throw IllegalStateException("Registry details missing in response: $bodyStr")
+                }
             }
         }
     }
@@ -214,51 +238,52 @@ class TricountApiClient(
         category: String = "OTHER"
     ): Result<Long> = withContext(Dispatchers.IO) {
         runCatching {
-            val (token, userId) = ensureSession()
-            val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSSSSS", Locale.US)
-            val dateStr = dateFormat.format(Date())
+            executeWithSessionRetry { token, userId ->
+                val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSSSSS", Locale.US)
+                val dateStr = dateFormat.format(Date())
 
-            val totalValStr = String.format(Locale.US, "-%.2f", amount)
-            val allocationItems = allocations.map { alloc ->
-                AllocationItem(
-                    membershipUuid = alloc.memberUuid,
-                    amount = AmountValue(
-                        value = String.format(Locale.US, "-%.2f", alloc.amount),
-                        currency = currency
-                    ),
-                    type = "AMOUNT"
-                )
-            }
-
-            val payload = RegistryEntryRequest(
-                uuid = UUID.randomUUID().toString(),
-                description = description.ifBlank { "Payment" },
-                amount = AmountValue(value = totalValStr, currency = currency),
-                membershipOwned = payerUuid,
-                allocations = allocationItems,
-                typeTransaction = "NORMAL",
-                status = "ACTIVE",
-                date = dateStr,
-                category = category
-            )
-
-            val requestBody = json.encodeToString(payload).toRequestBody(jsonMediaType)
-            val request = Request.Builder()
-                .url("$baseUrl/v1/user/$userId/registry/$tricountId/registry-entry")
-                .header("User-Agent", USER_AGENT)
-                .header("app-id", cachedInstallationUuid.orEmpty())
-                .header("X-Bunq-Client-Authentication", token)
-                .header("X-Bunq-Client-Request-Id", UUID.randomUUID().toString())
-                .post(requestBody)
-                .build()
-
-            client.newCall(request).execute().use { response ->
-                val bodyStr = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
-                    throw IllegalStateException("Failed to create expense (${response.code}): $bodyStr")
+                val totalValStr = String.format(Locale.US, "-%.2f", amount)
+                val allocationItems = allocations.map { alloc ->
+                    AllocationItem(
+                        membershipUuid = alloc.memberUuid,
+                        amount = AmountValue(
+                            value = String.format(Locale.US, "-%.2f", alloc.amount),
+                            currency = currency
+                        ),
+                        type = "AMOUNT"
+                    )
                 }
-                val createdResp = json.decodeFromString<EntryCreatedResponse>(bodyStr)
-                createdResp.response.firstOrNull()?.id?.id ?: 0L
+
+                val payload = RegistryEntryRequest(
+                    uuid = UUID.randomUUID().toString(),
+                    description = description.ifBlank { "Payment" },
+                    amount = AmountValue(value = totalValStr, currency = currency),
+                    membershipOwned = payerUuid,
+                    allocations = allocationItems,
+                    typeTransaction = "NORMAL",
+                    status = "ACTIVE",
+                    date = dateStr,
+                    category = category
+                )
+
+                val requestBody = json.encodeToString(payload).toRequestBody(jsonMediaType)
+                val request = Request.Builder()
+                    .url("$baseUrl/v1/user/$userId/registry/$tricountId/registry-entry")
+                    .header("User-Agent", USER_AGENT)
+                    .header("app-id", cachedInstallationUuid.orEmpty())
+                    .header("X-Bunq-Client-Authentication", token)
+                    .header("X-Bunq-Client-Request-Id", UUID.randomUUID().toString())
+                    .post(requestBody)
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    val bodyStr = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        throw IllegalStateException("Failed to create expense (${response.code}): $bodyStr")
+                    }
+                    val createdResp = json.decodeFromString<EntryCreatedResponse>(bodyStr)
+                    createdResp.response.firstOrNull()?.id?.id ?: 0L
+                }
             }
         }
     }
